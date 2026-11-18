@@ -1,4 +1,4 @@
-import { SAMPLE_QUESTIONS, getSanitizedQuestions } from './src/data/sampleQuestions.js';
+import { SAMPLE_QUESTIONS, LEVEL_2_QUESTION, getSanitizedQuestions } from './src/data/sampleQuestions.js';
 
 console.log('--- TEST SUITE 1: QUESTION INTEGRITY (20 SINHALA QUESTIONS) ---');
 if (SAMPLE_QUESTIONS.length !== 20) {
@@ -101,6 +101,16 @@ if (mixedResult.score !== 60 || mixedResult.correct !== 12 || mixedResult.incorr
 }
 console.log('✓ Mixed score scenario evaluated correctly: 60/100 points (12 correct, 4 incorrect, 4 unanswered).');
 
+// Test Level 2 question integrity
+console.log('\n--- TEST SUITE 4: LEVEL 2 UNTIMED TYPING QUESTION ---');
+if (!LEVEL_2_QUESTION || LEVEL_2_QUESTION.has_time_limit !== false) {
+  throw new Error('Level 2 question must have has_time_limit = false.');
+}
+if (!LEVEL_2_QUESTION.question_text.includes('ඔබට අනුව, දර්ශනය මිනිසාගේ ජීවිතයට වැදගත් වන්නේ ඇයි?')) {
+  throw new Error('Level 2 question text mismatch.');
+}
+console.log('✓ Level 2 untimed reflection question verified.');
+
 console.log('\n=============================================');
-console.log('ALL 20-QUESTION VERIFICATION TESTS PASSED! 🚀');
+console.log('ALL LEVEL 1 + LEVEL 2 TESTS PASSED! 🚀');
 console.log('=============================================');

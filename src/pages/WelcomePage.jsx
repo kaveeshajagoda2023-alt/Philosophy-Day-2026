@@ -6,13 +6,13 @@ export default function WelcomePage({ navigateTo }) {
   const rules = [
     {
       icon: <HelpCircle className="w-5 h-5 text-purple-400" />,
-      title: "20 Thought-Provoking Questions",
-      desc: "Covering Epistemology, Socrates, Plato, Aristotle, Descartes, Existentialism, Sri Aurobindo, Ethics, AI, and Contemporary Philosophy."
+      title: "Level 1 (20 Questions) + Level 2 Reflection",
+      desc: "Complete 20 timed multiple-choice philosophy questions in Level 1, followed by 1 untimed written reflection in Level 2."
     },
     {
       icon: <Clock className="w-5 h-5 text-amber-400" />,
-      title: "20 Seconds Per Question",
-      desc: "Each question has a countdown timer. Think swiftly—questions advance automatically when time expires."
+      title: "20s Timer (Level 1) • ∞ No Limit (Level 2)",
+      desc: "Level 1 questions have a 20-second countdown. Level 2 has NO time limit so you can think deeply and write freely."
     },
     {
       icon: <CheckCircle2 className="w-5 h-5 text-emerald-400" />,

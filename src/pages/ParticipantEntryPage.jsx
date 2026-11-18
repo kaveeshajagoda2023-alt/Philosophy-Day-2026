@@ -149,12 +149,10 @@ export default function ParticipantEntryPage({ onSessionStarted, navigateTo }) {
           </form>
 
           {/* Session Rules Summary */}
-          <div className="mt-6 pt-4 border-t border-white/5 text-center text-[11px] text-slate-500 flex items-center justify-center gap-3">
-            <span>⏱️ 20s / Question</span>
+          <div className="mt-6 pt-4 border-t border-white/5 text-center text-[11px] text-slate-500 flex flex-wrap items-center justify-center gap-2.5">
+            <span>⚡ Level 1: 20 MCQs (20s each)</span>
             <span>•</span>
-            <span>⚡ 20 Questions</span>
-            <span>•</span>
-            <span>🎯 100 Max Score</span>
+            <span>✍️ Level 2: 1 Essay (No Timer)</span>
           </div>
         </div>
       </div>

@@ -13,6 +13,7 @@ export default function ResultsPage({ resultData, onPlayAgain, navigateTo }) {
     incorrect_answers = 0,
     unanswered_questions = 0,
     completion_time = 0,
+    level2_answer = '',
     rank = null
   } = resultData || {};
 
@@ -166,6 +167,24 @@ export default function ResultsPage({ resultData, onPlayAgain, navigateTo }) {
               </div>
             </div>
           </div>
+
+          {/* Level 2 Submitted Reflection */}
+          {level2_answer && (
+            <div className="mb-8 p-5 rounded-2xl bg-slate-900/70 border border-amber-500/25 text-left">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-amber-300">
+                  ✨ Level 2 Reflection Submitted
+                </span>
+                <span className="text-[11px] text-emerald-400 font-semibold">Recorded ✓</span>
+              </div>
+              <p className="text-xs text-slate-400 mb-2">
+                “ඔබට අනුව, දර්ශනය මිනිසාගේ ජීවිතයට වැදගත් වන්නේ ඇයි?”
+              </p>
+              <p className="text-sm text-slate-100 whitespace-pre-wrap leading-relaxed bg-white/[0.03] p-3.5 rounded-xl border border-white/5">
+                {level2_answer}
+              </p>
+            </div>
+          )}
 
           {/* Philosophical Quote */}
           <div className="p-4 rounded-xl bg-purple-950/20 border border-purple-500/20 italic text-xs sm:text-sm text-purple-200/90 font-serif mb-8">

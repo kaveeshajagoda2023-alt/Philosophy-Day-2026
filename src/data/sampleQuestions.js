@@ -284,6 +284,16 @@ export const SAMPLE_QUESTIONS = [
   }
 ];
 
+// Level 2: Open-ended typing question (NO time limit)
+export const LEVEL_2_QUESTION = {
+  id: "level2-philosophy-life-importance",
+  level: 2,
+  category: "Level 2 • දාර්ශනික රචනය (Open Reflection)",
+  question_text: "ඔබට අනුව, දර්ශනය මිනිසාගේ ජීවිතයට වැදගත් වන්නේ ඇයි?",
+  placeholder: "ඔබගේ අදහස මෙහි ලියන්න... (Type your philosophical reflection here in Sinhala or English)",
+  has_time_limit: false
+};
+
 // Helper to strip correct answers before presenting to participant client
 export function getSanitizedQuestions(questions = SAMPLE_QUESTIONS) {
   return questions.map(q => ({

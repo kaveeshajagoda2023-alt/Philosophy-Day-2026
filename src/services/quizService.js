@@ -163,23 +163,40 @@ export async function startQuizSession(firstName, lastName) {
 }
 
 /**
- * Submit answers and calculate score server-side
+ * Submit Level 1 answers & Level 2 open reflection and calculate score server-side
  * @param {string} sessionToken
  * @param {Array<{question_id: string, selected_answer: string, time_taken: number}>} answers
+ * @param {string} level2Answer
  */
-export async function submitQuizAnswers(sessionToken, answers) {
+export async function submitQuizAnswers(sessionToken, answers, level2Answer = '') {
+  const cleanLevel2 = (level2Answer || '').trim();
+
   if (isSupabaseConfigured) {
     try {
-      const { data, error } = await supabase.rpc('submit_quiz_answers', {
+      let { data, error } = await supabase.rpc('submit_quiz_answers', {
         p_session_token: sessionToken,
-        p_answers: answers
+        p_answers: answers,
+        p_level2_answer: cleanLevel2 || null
       });
+
+      // Graceful fallback if DB hasn't applied the Level 2 migration yet
+      if (error && error.message && error.message.includes('p_level2_answer')) {
+        const retry = await supabase.rpc('submit_quiz_answers', {
+          p_session_token: sessionToken,
+          p_answers: answers
+        });
+        data = retry.data;
+        error = retry.error;
+      }
 
       if (error) {
         throw new Error(error.message);
       }
 
-      return data;
+      return {
+        ...data,
+        level2_answer: data.level2_answer ?? cleanLevel2
+      };
     } catch (err) {
       console.warn('Supabase submit failed, falling back to simulated submission:', err.message);
       if (err.message.includes('already been submitted') || err.message.includes('expired')) {
@@ -233,6 +250,7 @@ export async function submitQuizAnswers(sessionToken, answers) {
     incorrect_answers: incorrectCount,
     unanswered_questions: unansweredCount,
     completion_time: parseFloat(totalTime.toFixed(1)),
+    level2_answer: cleanLevel2,
     completed_at: new Date().toISOString()
   };
 
@@ -362,7 +380,7 @@ export async function fetchAdminMetrics() {
 export async function fetchAdminResults() {
   if (isSupabaseConfigured) {
     try {
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('quiz_results')
         .select(`
           id,
@@ -371,6 +389,7 @@ export async function fetchAdminResults() {
           incorrect_answers,
           unanswered_questions,
           completion_time,
+          level2_answer,
           created_at,
           participants (
             first_name,
@@ -378,6 +397,27 @@ export async function fetchAdminResults() {
           )
         `)
         .order('total_score', { ascending: false });
+
+      if (error && error.message && error.message.includes('level2_answer')) {
+        const fallback = await supabase
+          .from('quiz_results')
+          .select(`
+            id,
+            total_score,
+            correct_answers,
+            incorrect_answers,
+            unanswered_questions,
+            completion_time,
+            created_at,
+            participants (
+              first_name,
+              last_name
+            )
+          `)
+          .order('total_score', { ascending: false });
+        data = fallback.data;
+        error = fallback.error;
+      }
 
       if (!error && data) {
         return data.map((item, index) => ({
@@ -389,6 +429,7 @@ export async function fetchAdminResults() {
           incorrect_answers: item.incorrect_answers,
           unanswered_questions: item.unanswered_questions,
           completion_time: item.completion_time,
+          level2_answer: item.level2_answer || '',
           completed_at: item.created_at
         }));
       }

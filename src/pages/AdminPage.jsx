@@ -54,6 +54,7 @@ export default function AdminPage({ navigateTo }) {
   const [activeTab, setActiveTab] = useState('results'); // 'results' | 'questions' | 'settings'
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [actionSuccess, setActionSuccess] = useState('');
+  const [selectedLevel2Entry, setSelectedLevel2Entry] = useState(null);
 
   // Check initial session
   useEffect(() => {
@@ -132,33 +133,36 @@ export default function AdminPage({ navigateTo }) {
     }
   };
 
-  // Export Results to CSV
+  // Export Results to CSV (with UTF-8 BOM so Sinhala opens cleanly in Excel)
   const handleExportCSV = () => {
     if (!results || results.length === 0) {
       alert('No results available to export.');
       return;
     }
 
-    const headers = ['Rank', 'Participant Name', 'Total Score', 'Correct Answers', 'Incorrect Answers', 'Unanswered', 'Completion Time (seconds)', 'Submission Timestamp'];
+    const headers = ['Rank', 'Participant Name', 'Level 1 Score', 'Correct Answers', 'Incorrect Answers', 'Unanswered', 'Completion Time (seconds)', 'Level 2 Reflection Answer', 'Submission Timestamp'];
     const rows = results.map((r, idx) => [
       r.rank || idx + 1,
-      `"${r.participant_name.replace(/"/g, '""')}"`,
+      `"${(r.participant_name || '').replace(/"/g, '""')}"`,
       r.total_score,
       r.correct_answers,
       r.incorrect_answers,
       r.unanswered_questions,
       r.completion_time,
+      `"${(r.level2_answer || '').replace(/"/g, '""').replace(/\r?\n/g, ' ')}"`,
       `"${r.completed_at || ''}"`
     ]);
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
+    const csvString = '\uFEFF' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
+    link.setAttribute('href', url);
     link.setAttribute('download', `philosophy_day_2026_results_${new Date().toISOString().slice(0,10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   // Filter and sort results
@@ -445,13 +449,14 @@ export default function AdminPage({ navigateTo }) {
                   <th className="py-3 px-3 text-center text-rose-400">Incorrect</th>
                   <th className="py-3 px-3 text-center text-amber-400">Unanswered</th>
                   <th className="py-3 px-4 text-right">Time</th>
+                  <th className="py-3 px-4 text-center">Level 2</th>
                   <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5 text-sm">
                 {filteredResults.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="py-10 text-center text-slate-500 text-sm">
+                    <td colSpan={9} className="py-10 text-center text-slate-500 text-sm">
                       No matching participant results found.
                     </td>
                   </tr>
@@ -479,6 +484,19 @@ export default function AdminPage({ navigateTo }) {
                       <td className="py-3.5 px-4 text-right font-mono text-xs sm:text-sm text-slate-300">
                         {r.completion_time}s
                       </td>
+                      <td className="py-3.5 px-4 text-center">
+                        {r.level2_answer ? (
+                          <button
+                            onClick={() => setSelectedLevel2Entry(r)}
+                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-purple-300 hover:text-white px-2.5 py-1 rounded-lg bg-purple-500/15 hover:bg-purple-500/30 border border-purple-500/30 transition-all"
+                          >
+                            <Eye className="w-3 h-3" />
+                            <span>Read Essay</span>
+                          </button>
+                        ) : (
+                          <span className="text-xs text-slate-600">—</span>
+                        )}
+                      </td>
                       <td className="py-3.5 px-4 text-right">
                         <button
                           onClick={async () => {
@@ -499,6 +517,47 @@ export default function AdminPage({ navigateTo }) {
               </tbody>
             </table>
           </div>
+
+          {/* Level 2 Essay Viewer Modal */}
+          {selectedLevel2Entry && (
+            <div
+              className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+              onClick={() => setSelectedLevel2Entry(null)}
+            >
+              <div
+                className="glass-panel max-w-xl w-full p-6 rounded-3xl border border-purple-500/30 shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-start justify-between gap-4 mb-4">
+                  <div>
+                    <span className="text-[11px] uppercase font-bold tracking-wider text-amber-300">
+                      Level 2 Reflection Answer
+                    </span>
+                    <h3 className="text-lg font-bold text-white mt-0.5">
+                      {selectedLevel2Entry.participant_name}
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      Level 1 Score: {selectedLevel2Entry.total_score}/100 • Time: {selectedLevel2Entry.completion_time}s
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setSelectedLevel2Entry(null)}
+                    className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-xs"
+                  >
+                    ✕ Close
+                  </button>
+                </div>
+
+                <div className="mb-3 text-xs text-purple-300 font-medium">
+                  “ඔබට අනුව, දර්ශනය මිනිසාගේ ජීවිතයට වැදගත් වන්නේ ඇයි?”
+                </div>
+
+                <div className="p-4 rounded-2xl bg-slate-900/80 border border-white/10 text-sm text-slate-100 whitespace-pre-wrap leading-relaxed max-h-80 overflow-y-auto">
+                  {selectedLevel2Entry.level2_answer}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
