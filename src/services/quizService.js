@@ -311,9 +311,11 @@ export async function adminLogout() {
   sessionStorage.removeItem('philoday_admin_session');
 }
 
-export function getAdminSession() {
+export async function getAdminSession() {
   if (isSupabaseConfigured) {
-    return supabase.auth.getSession();
+    const { data, error } = await supabase.auth.getSession();
+    if (error || !data?.session) return null;
+    return data.session;
   }
   const raw = sessionStorage.getItem('philoday_admin_session');
   return raw ? JSON.parse(raw) : null;
@@ -441,7 +443,16 @@ export async function toggleQuestionActive(questionId, isActive) {
 /**
  * Reset participant's attempt (Organiser feature for edge cases)
  */
-export async function resetParticipantAttempt(participantName) {
+export async function resetParticipantAttempt(participantName, resultId = null) {
+  if (isSupabaseConfigured && resultId) {
+    const { error } = await supabase
+      .from('quiz_results')
+      .delete()
+      .eq('id', resultId);
+    if (error) throw error;
+    return;
+  }
+
   const results = JSON.parse(localStorage.getItem(STORAGE_RESULTS) || '[]');
   const filtered = results.filter(
     r => r.participant_name.toLowerCase() !== participantName.toLowerCase()

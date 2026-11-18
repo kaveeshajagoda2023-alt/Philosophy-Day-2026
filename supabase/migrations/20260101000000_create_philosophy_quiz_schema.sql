@@ -521,6 +521,10 @@ DECLARE
     v_avg_score NUMERIC(5,2);
     v_avg_time NUMERIC(6,2);
 BEGIN
+    IF auth.role() <> 'authenticated' THEN
+        RAISE EXCEPTION 'Unauthorized: Organiser authentication required.';
+    END IF;
+
     SELECT COUNT(*) INTO v_total_participants FROM public.participants;
     SELECT COUNT(*), COALESCE(MAX(total_score), 0), COALESCE(AVG(total_score), 0), COALESCE(AVG(completion_time), 0)
     INTO v_total_completed, v_highest_score, v_avg_score, v_avg_time

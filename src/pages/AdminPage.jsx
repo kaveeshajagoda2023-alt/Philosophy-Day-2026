@@ -57,10 +57,18 @@ export default function AdminPage({ navigateTo }) {
 
   // Check initial session
   useEffect(() => {
-    const existing = getAdminSession();
-    if (existing) {
-      setSession(existing);
-    }
+    let mounted = true;
+    (async () => {
+      try {
+        const existing = await getAdminSession();
+        if (mounted && existing) {
+          setSession(existing);
+        }
+      } catch (err) {
+        console.error('Session check failed:', err);
+      }
+    })();
+    return () => { mounted = false; };
   }, []);
 
   // Fetch admin dashboard data once logged in
@@ -475,7 +483,7 @@ export default function AdminPage({ navigateTo }) {
                         <button
                           onClick={async () => {
                             if (window.confirm(`Reset attempt for "${r.participant_name}" to permit retaking?`)) {
-                              await resetParticipantAttempt(r.participant_name);
+                              await resetParticipantAttempt(r.participant_name, r.id);
                               await loadAdminData();
                               setActionSuccess(`Attempt reset for ${r.participant_name}`);
                             }
