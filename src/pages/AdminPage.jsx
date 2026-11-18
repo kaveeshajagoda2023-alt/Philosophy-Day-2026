@@ -17,7 +17,8 @@ import {
   Eye,
   Award,
   RefreshCw,
-  FileText
+  FileText,
+  ListChecks
 } from 'lucide-react';
 import {
   adminLogin,
@@ -26,6 +27,7 @@ import {
   fetchAdminMetrics,
   fetchAdminResults,
   fetchParticipantAnswers,
+  fetchAllParticipantAnswers,
   fetchAdminQuestions,
   toggleQuestionActive,
   resetParticipantAttempt
@@ -51,9 +53,10 @@ export default function AdminPage({ navigateTo }) {
   const [questions, setQuestions] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('score_desc');
-  const [activeTab, setActiveTab] = useState('results'); // 'results' | 'questions'
+  const [activeTab, setActiveTab] = useState('results'); // 'results' | 'mcq_matrix' | 'questions'
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [actionSuccess, setActionSuccess] = useState('');
+  const [allAnswersBySession, setAllAnswersBySession] = useState({});
 
   // Full Participant Details Modal State (Q1-Q20 selected answers + Level 2 essay)
   const [selectedParticipant, setSelectedParticipant] = useState(null);
@@ -86,8 +89,13 @@ export default function AdminPage({ navigateTo }) {
         fetchAdminQuestions()
       ]);
       setMetrics(metricsData);
-      setResults(resultsData || []);
+      const safeResults = resultsData || [];
+      setResults(safeResults);
       setQuestions(questionsData || []);
+
+      // Load all participants' Q1-Q20 MCQ selections for Matrix view & CSV export
+      const answersMap = await fetchAllParticipantAnswers(safeResults);
+      setAllAnswersBySession(answersMap);
     } catch (err) {
       console.error('Error loading admin data:', err);
       if (err.message && err.message.toLowerCase().includes('unauthorized')) {
@@ -165,6 +173,9 @@ export default function AdminPage({ navigateTo }) {
       return;
     }
 
+    const sortedQuestions = [...questions].sort((a, b) => a.order_num - b.order_num);
+    const questionCols = sortedQuestions.map(q => `Q${q.order_num} Selected`);
+
     const headers = [
       'Rank',
       'Participant Name',
@@ -174,21 +185,35 @@ export default function AdminPage({ navigateTo }) {
       'Incorrect Answers',
       'Unanswered',
       'Completion Time (seconds)',
+      ...questionCols,
       'Level 2 Reflection Answer',
       'Submission Timestamp'
     ];
-    const rows = results.map((r, idx) => [
-      r.rank || idx + 1,
-      `"${(r.participant_name || '').replace(/"/g, '""')}"`,
-      r.total_score,
-      r.answered_questions ?? ((r.correct_answers || 0) + (r.incorrect_answers || 0)),
-      r.correct_answers,
-      r.incorrect_answers,
-      r.unanswered_questions,
-      r.completion_time,
-      `"${(r.level2_answer || '').replace(/"/g, '""').replace(/\r?\n/g, ' ')}"`,
-      `"${r.completed_at || ''}"`
-    ]);
+    const rows = results.map((r, idx) => {
+      const pAnswers = allAnswersBySession[r.session_id] || [];
+      const ansByOrder = new Map(pAnswers.map(a => [a.order_num, a]));
+      const qValues = sortedQuestions.map(q => {
+        const a = ansByOrder.get(q.order_num);
+        if (!a || !a.selected_answer) return '"Not Answered"';
+        const label = getOptionLabel(a, a.selected_answer);
+        const tag = a.is_correct ? ' [Correct]' : ' [Wrong]';
+        return `"${(label + tag).replace(/"/g, '""')}"`;
+      });
+
+      return [
+        r.rank || idx + 1,
+        `"${(r.participant_name || '').replace(/"/g, '""')}"`,
+        r.total_score,
+        r.answered_questions ?? ((r.correct_answers || 0) + (r.incorrect_answers || 0)),
+        r.correct_answers,
+        r.incorrect_answers,
+        r.unanswered_questions,
+        r.completion_time,
+        ...qValues,
+        `"${(r.level2_answer || '').replace(/"/g, '""').replace(/\r?\n/g, ' ')}"`,
+        `"${r.completed_at || ''}"`
+      ];
+    });
 
     const csvString = '\uFEFF' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
     const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
@@ -423,7 +448,7 @@ export default function AdminPage({ navigateTo }) {
       </div>
 
       {/* Tabs Bar */}
-      <div className="flex border-b border-white/10 mb-6 gap-2">
+      <div className="flex flex-wrap border-b border-white/10 mb-6 gap-2">
         <button
           onClick={() => setActiveTab('results')}
           className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-all flex items-center gap-2 ${
@@ -433,7 +458,19 @@ export default function AdminPage({ navigateTo }) {
           }`}
         >
           <Trophy className="w-4 h-4 text-amber-400" />
-          <span>Participant Results & Answers ({results.length})</span>
+          <span>Participant Results ({results.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('mcq_matrix')}
+          className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-all flex items-center gap-2 ${
+            activeTab === 'mcq_matrix'
+              ? 'border-purple-500 text-purple-300'
+              : 'border-transparent text-slate-400 hover:text-white'
+          }`}
+        >
+          <ListChecks className="w-4 h-4 text-emerald-400" />
+          <span>MCQ Selections (Q1–Q20)</span>
         </button>
 
         <button
@@ -561,9 +598,120 @@ export default function AdminPage({ navigateTo }) {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
 
-          {/* FULL PARTICIPANT REPORT MODAL (ALL Q1-Q20 ANSWERS + LEVEL 2 ESSAY) */}
-          {selectedParticipant && (
+      {/* TAB 2: ALL PARTICIPANTS MCQ SELECTIONS MATRIX (Q1 - Q20) */}
+      {activeTab === 'mcq_matrix' && (
+        <div className="glass-panel p-5 rounded-3xl border border-white/10 shadow-2xl">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+            <div>
+              <h3 className="text-base font-bold text-white">
+                All Participants — Selected MCQ Answers (Q1–Q20)
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Green = Correct • Red = Wrong • — = Not Answered. Click any participant to read full Sinhala options &amp; Level 2 essay.
+              </p>
+            </div>
+            <div className="relative w-full sm:w-64">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Filter participant..."
+                className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-900/80 border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-white/10 text-slate-400 uppercase tracking-wider">
+                  <th className="py-3 px-3 sticky left-0 bg-[#131b2c] z-10 min-w-[160px]">Participant</th>
+                  <th className="py-3 px-2 text-center">Score</th>
+                  {[...questions]
+                    .sort((a, b) => a.order_num - b.order_num)
+                    .map((q) => (
+                      <th
+                        key={q.id}
+                        className="py-3 px-2 text-center min-w-[44px]"
+                        title={`Q${q.order_num}: ${q.question_text} (Correct: ${q.correct_answer})`}
+                      >
+                        <div>Q{q.order_num}</div>
+                        <div className="text-[9px] text-emerald-400 font-normal">({q.correct_answer})</div>
+                      </th>
+                    ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {filteredResults.length === 0 ? (
+                  <tr>
+                    <td colSpan={questions.length + 2} className="py-10 text-center text-slate-500">
+                      No participant submissions recorded yet.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredResults.map((r, idx) => {
+                    const pAnswers = allAnswersBySession[r.session_id] || [];
+                    const ansByOrder = new Map(pAnswers.map((a) => [a.order_num, a]));
+                    const sortedQs = [...questions].sort((a, b) => a.order_num - b.order_num);
+
+                    return (
+                      <tr
+                        key={r.id || idx}
+                        onClick={() => handleViewFullDetails(r)}
+                        className="hover:bg-white/[0.04] cursor-pointer transition-colors"
+                      >
+                        <td className="py-3 px-3 font-semibold text-white sticky left-0 bg-[#131b2c] z-10 border-r border-white/5">
+                          <div className="truncate max-w-[160px]">{r.participant_name}</div>
+                          <div className="text-[10px] text-purple-300 font-normal">Click for full view</div>
+                        </td>
+                        <td className="py-3 px-2 text-center font-bold text-purple-300">
+                          {r.total_score}
+                        </td>
+                        {sortedQs.map((q) => {
+                          const a = ansByOrder.get(q.order_num);
+                          if (!a || !a.selected_answer) {
+                            return (
+                              <td key={q.id} className="py-3 px-1.5 text-center" title="Not Answered">
+                                <span className="inline-block w-7 py-1 rounded bg-amber-500/10 text-amber-400 font-semibold">
+                                  —
+                                </span>
+                              </td>
+                            );
+                          }
+                          return (
+                            <td
+                              key={q.id}
+                              className="py-3 px-1.5 text-center"
+                              title={`Q${q.order_num} Selected: ${getOptionLabel(a, a.selected_answer)}`}
+                            >
+                              <span
+                                className={`inline-block w-7 py-1 rounded font-bold ${
+                                  a.is_correct
+                                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                    : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                                }`}
+                              >
+                                {a.selected_answer}
+                              </span>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* FULL PARTICIPANT REPORT MODAL (ALL Q1-Q20 ANSWERS + LEVEL 2 ESSAY) */}
+      {selectedParticipant && (
             <div
               className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6"
               onClick={() => setSelectedParticipant(null)}
@@ -718,10 +866,8 @@ export default function AdminPage({ navigateTo }) {
               </div>
             </div>
           )}
-        </div>
-      )}
 
-      {/* TAB 2: QUESTION MANAGER */}
+      {/* TAB 3: QUESTION MANAGER */}
       {activeTab === 'questions' && (
         <div className="space-y-4">
           <div className="p-4 rounded-2xl bg-purple-950/20 border border-purple-500/20 text-xs text-purple-200">

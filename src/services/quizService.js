@@ -397,6 +397,27 @@ export async function fetchParticipantAnswers(sessionId) {
 }
 
 /**
+ * Fetch MCQ Selected Answers for ALL Participants (for Admin Answer Matrix & CSV Export)
+ */
+export async function fetchAllParticipantAnswers(resultsList = []) {
+  const answersBySession = {};
+  if (!resultsList || resultsList.length === 0) return answersBySession;
+
+  await Promise.all(
+    resultsList.map(async (r) => {
+      if (!r.session_id) return;
+      try {
+        answersBySession[r.session_id] = await fetchParticipantAnswers(r.session_id);
+      } catch {
+        answersBySession[r.session_id] = [];
+      }
+    })
+  );
+
+  return answersBySession;
+}
+
+/**
  * Fetch Questions for Admin Management (Includes correct_answer) (Admin Only)
  */
 export async function fetchAdminQuestions() {
