@@ -64,18 +64,6 @@ export default function Navbar({ currentPage, navigateTo }) {
             Play Quiz
           </button>
 
-          <button
-            onClick={() => handleNav('leaderboard')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-all ${
-              currentPage === 'leaderboard'
-                ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30 shadow-sm'
-                : 'text-slate-300 hover:text-white hover:bg-white/5'
-            }`}
-          >
-            <Trophy className="w-4 h-4 text-amber-400" />
-            Leaderboard
-          </button>
-
           <div className="w-[1px] h-6 bg-white/10 mx-2" />
 
           <button
@@ -120,13 +108,6 @@ export default function Navbar({ currentPage, navigateTo }) {
           >
             <Sparkles className="w-4 h-4 text-pink-400" />
             Play Quiz
-          </button>
-          <button
-            onClick={() => handleNav('leaderboard')}
-            className="flex items-center gap-3 w-full px-4 py-2.5 rounded-lg text-left text-sm font-medium text-amber-300 hover:bg-amber-500/10"
-          >
-            <Trophy className="w-4 h-4 text-amber-400" />
-            Live Leaderboard
           </button>
           <button
             onClick={() => handleNav('admin')}

@@ -73,7 +73,7 @@ export default function ParticipantEntryPage({ onSessionStarted, navigateTo }) {
           <div className="mb-6 p-3.5 rounded-xl bg-purple-950/30 border border-purple-500/20 flex items-start gap-3">
             <Shield className="w-4 h-4 text-purple-400 shrink-0 mt-0.5" />
             <p className="text-xs text-purple-200/90 leading-relaxed">
-              <strong>Open Access:</strong> No email, password, or account needed. Your name is only used to display your score on the public leaderboard.
+              <strong>Open Access:</strong> No email, password, or account needed. Your name is only used to record your official submission for the Philosophy Club.
             </p>
           </div>
 

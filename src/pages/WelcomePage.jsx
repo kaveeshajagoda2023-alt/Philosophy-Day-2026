@@ -16,13 +16,13 @@ export default function WelcomePage({ navigateTo }) {
     },
     {
       icon: <CheckCircle2 className="w-5 h-5 text-emerald-400" />,
-      title: "100 Points Maximum",
-      desc: "+5 points per correct answer. 0 for incorrect or unanswered. Tied scores are broken by fastest completion time."
+      title: "Private & Fair Evaluation",
+      desc: "After completing both levels, you will see how many questions you answered. Official scores are reviewed privately by the Philosophy Club."
     },
     {
       icon: <Shield className="w-5 h-5 text-pink-400" />,
       title: "Zero Registration Required",
-      desc: "No password, no email, no signup! Just enter your first name and surname to enter the live leaderboard."
+      desc: "No password, no email, no signup! Just enter your first name and surname to begin your official quiz attempt."
     }
   ];
 
@@ -58,26 +58,17 @@ export default function WelcomePage({ navigateTo }) {
         {/* Short Welcome Narrative */}
         <p className="text-base sm:text-lg text-slate-300 max-w-2xl mx-auto mb-10 leading-relaxed font-normal">
           Welcome to the ultimate intellectual arena. Test your understanding of existence,
-          ethics, dialectics, and ancient wisdom in this rapid 20-question challenge.
-          Will you ascend to the top of the symposium leaderboard?
+          ethics, dialectics, and ancient wisdom across Level 1 (20 rapid questions) and Level 2 (open reflection).
         </p>
 
-        {/* CTA Buttons */}
+        {/* CTA Button */}
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-14">
           <button
             onClick={() => navigateTo('entry')}
-            className="w-full sm:w-auto btn-primary flex items-center justify-center gap-3 text-base sm:text-lg py-4 px-8 group font-semibold"
+            className="w-full sm:w-auto btn-primary flex items-center justify-center gap-3 text-base sm:text-lg py-4 px-10 group font-semibold"
           >
             <span>Enter Quiz Challenge</span>
             <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1.5" />
-          </button>
-
-          <button
-            onClick={() => navigateTo('leaderboard')}
-            className="w-full sm:w-auto px-6 py-4 rounded-xl font-semibold text-slate-200 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-amber-400/40 transition-all flex items-center justify-center gap-2 text-base shadow-sm"
-          >
-            <Trophy className="w-5 h-5 text-amber-400" />
-            <span>View Leaderboard</span>
           </button>
         </div>
 

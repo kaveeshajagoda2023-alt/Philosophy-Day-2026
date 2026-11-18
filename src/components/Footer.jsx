@@ -26,12 +26,6 @@ export default function Footer({ navigateTo }) {
               Event Overview
             </button>
             <button 
-              onClick={() => navigateTo('leaderboard')}
-              className="hover:text-amber-400 transition-colors"
-            >
-              Leaderboard
-            </button>
-            <button 
               onClick={() => navigateTo('admin')}
               className="hover:text-blue-400 transition-colors flex items-center gap-1"
             >

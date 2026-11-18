@@ -1,32 +1,32 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  ShieldCheck, 
-  Users, 
-  Trophy, 
-  Clock, 
-  Download, 
-  Search, 
-  CheckCircle, 
-  XCircle, 
-  HelpCircle, 
-  Lock, 
-  LogOut, 
-  Settings, 
-  BookOpen, 
-  ToggleLeft, 
+import {
+  ShieldCheck,
+  Users,
+  Trophy,
+  Clock,
+  Download,
+  Search,
+  CheckCircle,
+  XCircle,
+  HelpCircle,
+  Lock,
+  LogOut,
+  BookOpen,
+  ToggleLeft,
   ToggleRight,
   Eye,
-  FileSpreadsheet,
-  AlertTriangle,
-  RefreshCw
+  Award,
+  RefreshCw,
+  FileText
 } from 'lucide-react';
-import { 
-  adminLogin, 
-  adminLogout, 
-  getAdminSession, 
-  fetchAdminMetrics, 
-  fetchAdminResults, 
-  fetchAdminQuestions, 
+import {
+  adminLogin,
+  adminLogout,
+  getAdminSession,
+  fetchAdminMetrics,
+  fetchAdminResults,
+  fetchParticipantAnswers,
+  fetchAdminQuestions,
   toggleQuestionActive,
   resetParticipantAttempt
 } from '../services/quizService';
@@ -51,10 +51,14 @@ export default function AdminPage({ navigateTo }) {
   const [questions, setQuestions] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('score_desc');
-  const [activeTab, setActiveTab] = useState('results'); // 'results' | 'questions' | 'settings'
+  const [activeTab, setActiveTab] = useState('results'); // 'results' | 'questions'
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [actionSuccess, setActionSuccess] = useState('');
-  const [selectedLevel2Entry, setSelectedLevel2Entry] = useState(null);
+
+  // Full Participant Details Modal State (Q1-Q20 selected answers + Level 2 essay)
+  const [selectedParticipant, setSelectedParticipant] = useState(null);
+  const [participantAnswers, setParticipantAnswers] = useState([]);
+  const [isLoadingAnswers, setIsLoadingAnswers] = useState(false);
 
   // Check initial session
   useEffect(() => {
@@ -86,6 +90,10 @@ export default function AdminPage({ navigateTo }) {
       setQuestions(questionsData || []);
     } catch (err) {
       console.error('Error loading admin data:', err);
+      if (err.message && err.message.toLowerCase().includes('unauthorized')) {
+        await adminLogout();
+        setSession(null);
+      }
     } finally {
       setIsLoadingData(false);
     }
@@ -97,6 +105,22 @@ export default function AdminPage({ navigateTo }) {
     }
   }, [session]);
 
+  // Open Full Participant Answers Modal
+  const handleViewFullDetails = async (participantRow) => {
+    setSelectedParticipant(participantRow);
+    setParticipantAnswers([]);
+    setIsLoadingAnswers(true);
+
+    try {
+      const answers = await fetchParticipantAnswers(participantRow.session_id);
+      setParticipantAnswers(answers || []);
+    } catch (err) {
+      console.error('Failed to load participant answers:', err);
+    } finally {
+      setIsLoadingAnswers(false);
+    }
+  };
+
   // Handle Login
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -106,6 +130,7 @@ export default function AdminPage({ navigateTo }) {
     try {
       const authResult = await adminLogin(email, password);
       setSession(authResult);
+      setPassword('');
     } catch (err) {
       setAuthError(err.message || 'Authentication failed. Please check credentials.');
     } finally {
@@ -123,7 +148,7 @@ export default function AdminPage({ navigateTo }) {
   const handleToggleQuestion = async (id, currentStatus) => {
     try {
       await toggleQuestionActive(id, !currentStatus);
-      setQuestions(prev => 
+      setQuestions(prev =>
         prev.map(q => q.id === id ? { ...q, is_active: !currentStatus } : q)
       );
       setActionSuccess('Question status updated successfully.');
@@ -133,18 +158,30 @@ export default function AdminPage({ navigateTo }) {
     }
   };
 
-  // Export Results to CSV (with UTF-8 BOM so Sinhala opens cleanly in Excel)
+  // Export Results to CSV (with UTF-8 BOM for Sinhala Excel support)
   const handleExportCSV = () => {
     if (!results || results.length === 0) {
       alert('No results available to export.');
       return;
     }
 
-    const headers = ['Rank', 'Participant Name', 'Level 1 Score', 'Correct Answers', 'Incorrect Answers', 'Unanswered', 'Completion Time (seconds)', 'Level 2 Reflection Answer', 'Submission Timestamp'];
+    const headers = [
+      'Rank',
+      'Participant Name',
+      'Level 1 Score (/100)',
+      'Questions Answered',
+      'Correct Answers',
+      'Incorrect Answers',
+      'Unanswered',
+      'Completion Time (seconds)',
+      'Level 2 Reflection Answer',
+      'Submission Timestamp'
+    ];
     const rows = results.map((r, idx) => [
       r.rank || idx + 1,
       `"${(r.participant_name || '').replace(/"/g, '""')}"`,
       r.total_score,
+      r.answered_questions ?? ((r.correct_answers || 0) + (r.incorrect_answers || 0)),
       r.correct_answers,
       r.incorrect_answers,
       r.unanswered_questions,
@@ -158,11 +195,18 @@ export default function AdminPage({ navigateTo }) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `philosophy_day_2026_results_${new Date().toISOString().slice(0,10)}.csv`);
+    link.setAttribute('download', `philosophy_day_2026_results_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  };
+
+  // Helper to get full option text for A/B/C/D
+  const getOptionLabel = (row, letter) => {
+    if (!letter) return 'Not Answered';
+    const text = row[`option_${letter.toLowerCase()}`];
+    return text ? `${letter}) ${text}` : letter;
   };
 
   // Filter and sort results
@@ -194,15 +238,14 @@ export default function AdminPage({ navigateTo }) {
                 Organiser Portal
               </h2>
               <p className="text-xs text-slate-400">
-                Philosophy Club Committee & Quiz Administrators
+                Restricted to Authorised Philosophy Club Admin Only
               </p>
             </div>
 
-            {/* Supabase status badge */}
             <div className="mb-5 p-3 rounded-xl bg-slate-900/60 border border-white/5 text-[11px] text-slate-400 flex items-center justify-between">
-              <span>Authentication Engine:</span>
+              <span>Database Connection:</span>
               <span className={`font-semibold ${isSupabaseConfigured ? 'text-emerald-400' : 'text-amber-400'}`}>
-                {isSupabaseConfigured ? '● Supabase Auth' : '● Local Admin Auth'}
+                {isSupabaseConfigured ? '● Live Supabase Protected' : '● Local Admin Mode'}
               </span>
             </div>
 
@@ -215,13 +258,13 @@ export default function AdminPage({ navigateTo }) {
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-                  Organiser Email
+                  Admin Email
                 </label>
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@philosophyday.edu"
+                  placeholder="Enter authorised admin email"
                   required
                   className="w-full px-4 py-2.5 rounded-xl bg-slate-900/80 border border-white/10 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
@@ -235,7 +278,7 @@ export default function AdminPage({ navigateTo }) {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••••••"
+                  placeholder="••••••••"
                   required
                   className="w-full px-4 py-2.5 rounded-xl bg-slate-900/80 border border-white/10 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
@@ -251,7 +294,7 @@ export default function AdminPage({ navigateTo }) {
                 ) : (
                   <>
                     <ShieldCheck className="w-4 h-4" />
-                    <span>Authenticate Dashboard</span>
+                    <span>Sign In to Dashboard</span>
                   </>
                 )}
               </button>
@@ -272,7 +315,7 @@ export default function AdminPage({ navigateTo }) {
   }
 
   // -------------------------------------------------------------
-  // VIEW 2: AUTHENTICATED ORGANISER DASHBOARD
+  // VIEW 2: AUTHENTICATED ORGANISER DASHBOARD (FULL VISIBILITY)
   // -------------------------------------------------------------
   return (
     <div className="min-h-[calc(100vh-140px)] py-8 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
@@ -288,18 +331,18 @@ export default function AdminPage({ navigateTo }) {
             </span>
           </div>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Philosophy Day 2026 Event Administration & Real-Time Monitoring
+            Private Leaderboard, Individual Participant Answers (Level 1 & Level 2), and Question Controls
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
           <button
             onClick={loadAdminData}
             disabled={isLoadingData}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-slate-300"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoadingData ? 'animate-spin' : ''}`} />
-            <span>Refresh Data</span>
+            <span>Refresh</span>
           </button>
 
           <button
@@ -371,7 +414,7 @@ export default function AdminPage({ navigateTo }) {
         <div className="glass-card p-4 rounded-2xl border border-white/5 col-span-2 lg:col-span-1">
           <div className="text-slate-400 text-xs font-medium flex items-center gap-1.5 mb-1">
             <Clock className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Avg Completion Time</span>
+            <span>Avg Time</span>
           </div>
           <div className="text-2xl font-bold text-cyan-300">
             {metrics.average_time}s
@@ -389,8 +432,8 @@ export default function AdminPage({ navigateTo }) {
               : 'border-transparent text-slate-400 hover:text-white'
           }`}
         >
-          <Users className="w-4 h-4" />
-          <span>Participant Results ({results.length})</span>
+          <Trophy className="w-4 h-4 text-amber-400" />
+          <span>Participant Results & Answers ({results.length})</span>
         </button>
 
         <button
@@ -406,10 +449,9 @@ export default function AdminPage({ navigateTo }) {
         </button>
       </div>
 
-      {/* TAB 1: RESULTS TABLE */}
+      {/* TAB 1: PRIVATE RANKINGS & FULL PARTICIPANT ANSWERS */}
       {activeTab === 'results' && (
         <div className="glass-panel p-5 rounded-3xl border border-white/10 shadow-2xl">
-          {/* Controls: Search & Sort */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mb-6">
             <div className="relative w-full sm:w-80">
               <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -437,7 +479,6 @@ export default function AdminPage({ navigateTo }) {
             </div>
           </div>
 
-          {/* Results Table */}
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -445,115 +486,234 @@ export default function AdminPage({ navigateTo }) {
                   <th className="py-3 px-3 text-center">Rank</th>
                   <th className="py-3 px-4">Participant</th>
                   <th className="py-3 px-3 text-center">Score</th>
+                  <th className="py-3 px-3 text-center text-blue-300">Answered</th>
                   <th className="py-3 px-3 text-center text-emerald-400">Correct</th>
-                  <th className="py-3 px-3 text-center text-rose-400">Incorrect</th>
-                  <th className="py-3 px-3 text-center text-amber-400">Unanswered</th>
-                  <th className="py-3 px-4 text-right">Time</th>
-                  <th className="py-3 px-4 text-center">Level 2</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
+                  <th className="py-3 px-3 text-center text-rose-400">Wrong</th>
+                  <th className="py-3 px-3 text-center text-amber-400">Skipped</th>
+                  <th className="py-3 px-3 text-right">Time</th>
+                  <th className="py-3 px-4 text-center">Full Report</th>
+                  <th className="py-3 px-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5 text-sm">
                 {filteredResults.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="py-10 text-center text-slate-500 text-sm">
-                      No matching participant results found.
+                    <td colSpan={10} className="py-10 text-center text-slate-500 text-sm">
+                      No participant submissions recorded yet.
                     </td>
                   </tr>
                 ) : (
-                  filteredResults.map((r, idx) => (
-                    <tr key={r.id || idx} className="hover:bg-white/[0.03]">
-                      <td className="py-3.5 px-3 text-center font-bold text-slate-400">
-                        #{r.rank || idx + 1}
-                      </td>
-                      <td className="py-3.5 px-4 font-semibold text-white">
-                        {r.participant_name}
-                      </td>
-                      <td className="py-3.5 px-3 text-center font-bold text-purple-300 text-base">
-                        {r.total_score}
-                      </td>
-                      <td className="py-3.5 px-3 text-center text-emerald-400 font-medium">
-                        {r.correct_answers}
-                      </td>
-                      <td className="py-3.5 px-3 text-center text-rose-400 font-medium">
-                        {r.incorrect_answers}
-                      </td>
-                      <td className="py-3.5 px-3 text-center text-amber-400 font-medium">
-                        {r.unanswered_questions}
-                      </td>
-                      <td className="py-3.5 px-4 text-right font-mono text-xs sm:text-sm text-slate-300">
-                        {r.completion_time}s
-                      </td>
-                      <td className="py-3.5 px-4 text-center">
-                        {r.level2_answer ? (
+                  filteredResults.map((r, idx) => {
+                    const answered = r.answered_questions ?? ((r.correct_answers || 0) + (r.incorrect_answers || 0));
+                    return (
+                      <tr key={r.id || idx} className="hover:bg-white/[0.03]">
+                        <td className="py-3.5 px-3 text-center font-bold text-slate-400">
+                          #{r.rank || idx + 1}
+                        </td>
+                        <td className="py-3.5 px-4 font-semibold text-white">
+                          {r.participant_name}
+                        </td>
+                        <td className="py-3.5 px-3 text-center font-bold text-purple-300 text-base">
+                          {r.total_score}
+                        </td>
+                        <td className="py-3.5 px-3 text-center text-blue-300 font-medium">
+                          {answered}
+                        </td>
+                        <td className="py-3.5 px-3 text-center text-emerald-400 font-medium">
+                          {r.correct_answers}
+                        </td>
+                        <td className="py-3.5 px-3 text-center text-rose-400 font-medium">
+                          {r.incorrect_answers}
+                        </td>
+                        <td className="py-3.5 px-3 text-center text-amber-400 font-medium">
+                          {r.unanswered_questions}
+                        </td>
+                        <td className="py-3.5 px-3 text-right font-mono text-xs sm:text-sm text-slate-300">
+                          {r.completion_time}s
+                        </td>
+                        <td className="py-3.5 px-4 text-center">
                           <button
-                            onClick={() => setSelectedLevel2Entry(r)}
-                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-purple-300 hover:text-white px-2.5 py-1 rounded-lg bg-purple-500/15 hover:bg-purple-500/30 border border-purple-500/30 transition-all"
+                            onClick={() => handleViewFullDetails(r)}
+                            className="inline-flex items-center gap-1.5 text-xs font-semibold text-purple-200 hover:text-white px-3 py-1.5 rounded-lg bg-purple-600/25 hover:bg-purple-600/45 border border-purple-500/40 transition-all"
                           >
-                            <Eye className="w-3 h-3" />
-                            <span>Read Essay</span>
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>View All Answers</span>
                           </button>
-                        ) : (
-                          <span className="text-xs text-slate-600">—</span>
-                        )}
-                      </td>
-                      <td className="py-3.5 px-4 text-right">
-                        <button
-                          onClick={async () => {
-                            if (window.confirm(`Reset attempt for "${r.participant_name}" to permit retaking?`)) {
-                              await resetParticipantAttempt(r.participant_name, r.id);
-                              await loadAdminData();
-                              setActionSuccess(`Attempt reset for ${r.participant_name}`);
-                            }
-                          }}
-                          className="text-[11px] text-amber-400 hover:text-amber-300 px-2 py-1 rounded bg-amber-500/10 hover:bg-amber-500/20"
-                        >
-                          Reset Attempt
-                        </button>
-                      </td>
-                    </tr>
-                  ))
+                        </td>
+                        <td className="py-3.5 px-3 text-right">
+                          <button
+                            onClick={async () => {
+                              if (window.confirm(`Reset attempt for "${r.participant_name}" to allow retaking?`)) {
+                                await resetParticipantAttempt(r.participant_name, r.id);
+                                await loadAdminData();
+                                setActionSuccess(`Attempt reset for ${r.participant_name}`);
+                              }
+                            }}
+                            className="text-[11px] text-amber-400 hover:text-amber-300 px-2 py-1 rounded bg-amber-500/10 hover:bg-amber-500/20"
+                          >
+                            Reset
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
           </div>
 
-          {/* Level 2 Essay Viewer Modal */}
-          {selectedLevel2Entry && (
+          {/* FULL PARTICIPANT REPORT MODAL (ALL Q1-Q20 ANSWERS + LEVEL 2 ESSAY) */}
+          {selectedParticipant && (
             <div
-              className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
-              onClick={() => setSelectedLevel2Entry(null)}
+              className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6"
+              onClick={() => setSelectedParticipant(null)}
             >
               <div
-                className="glass-panel max-w-xl w-full p-6 rounded-3xl border border-purple-500/30 shadow-2xl"
+                className="glass-panel max-w-4xl w-full max-h-[90vh] flex flex-col rounded-3xl border border-purple-500/30 shadow-2xl overflow-hidden"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="flex items-start justify-between gap-4 mb-4">
+                {/* Modal Header */}
+                <div className="p-5 sm:p-6 border-b border-white/10 flex items-start justify-between gap-4 bg-slate-900/70">
                   <div>
-                    <span className="text-[11px] uppercase font-bold tracking-wider text-amber-300">
-                      Level 2 Reflection Answer
+                    <span className="text-[11px] uppercase font-bold tracking-wider text-purple-300">
+                      Complete Participant Submission Report
                     </span>
-                    <h3 className="text-lg font-bold text-white mt-0.5">
-                      {selectedLevel2Entry.participant_name}
+                    <h3 className="text-xl sm:text-2xl font-display font-bold text-white mt-0.5">
+                      {selectedParticipant.participant_name}
                     </h3>
-                    <p className="text-xs text-slate-400">
-                      Level 1 Score: {selectedLevel2Entry.total_score}/100 • Time: {selectedLevel2Entry.completion_time}s
-                    </p>
+                    <div className="flex flex-wrap items-center gap-3 mt-2 text-xs">
+                      <span className="px-2.5 py-1 rounded-md bg-purple-500/20 text-purple-200 font-bold">
+                        Score: {selectedParticipant.total_score} / 100
+                      </span>
+                      <span className="px-2.5 py-1 rounded-md bg-emerald-500/15 text-emerald-300">
+                        Correct: {selectedParticipant.correct_answers}
+                      </span>
+                      <span className="px-2.5 py-1 rounded-md bg-rose-500/15 text-rose-300">
+                        Incorrect: {selectedParticipant.incorrect_answers}
+                      </span>
+                      <span className="px-2.5 py-1 rounded-md bg-amber-500/15 text-amber-300">
+                        Not Answered: {selectedParticipant.unanswered_questions}
+                      </span>
+                      <span className="px-2.5 py-1 rounded-md bg-blue-500/15 text-blue-300">
+                        Time: {selectedParticipant.completion_time}s
+                      </span>
+                    </div>
                   </div>
                   <button
-                    onClick={() => setSelectedLevel2Entry(null)}
-                    className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-xs"
+                    onClick={() => setSelectedParticipant(null)}
+                    className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/15 text-slate-200 text-xs font-semibold shrink-0"
                   >
                     ✕ Close
                   </button>
                 </div>
 
-                <div className="mb-3 text-xs text-purple-300 font-medium">
-                  “ඔබට අනුව, දර්ශනය මිනිසාගේ ජීවිතයට වැදගත් වන්නේ ඇයි?”
-                </div>
+                {/* Modal Scrollable Body */}
+                <div className="p-5 sm:p-6 overflow-y-auto space-y-6">
+                  {/* Level 2 Essay Section */}
+                  <div className="p-5 rounded-2xl bg-gradient-to-r from-amber-950/30 via-slate-900/80 to-purple-950/30 border border-amber-500/30">
+                    <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-amber-300 mb-2">
+                      <FileText className="w-4 h-4" />
+                      <span>Level 2 — Open Reflection Answer (Untimed)</span>
+                    </div>
+                    <p className="text-xs text-slate-400 mb-2">
+                      “ඔබට අනුව, දර්ශනය මිනිසාගේ ජීවිතයට වැදගත් වන්නේ ඇයි?”
+                    </p>
+                    <div className="p-4 rounded-xl bg-slate-950/70 border border-white/10 text-sm text-slate-100 whitespace-pre-wrap leading-relaxed">
+                      {selectedParticipant.level2_answer ? (
+                        selectedParticipant.level2_answer
+                      ) : (
+                        <span className="italic text-slate-500">No Level 2 answer submitted.</span>
+                      )}
+                    </div>
+                  </div>
 
-                <div className="p-4 rounded-2xl bg-slate-900/80 border border-white/10 text-sm text-slate-100 whitespace-pre-wrap leading-relaxed max-h-80 overflow-y-auto">
-                  {selectedLevel2Entry.level2_answer}
+                  {/* Level 1 Question-by-Question Breakdown */}
+                  <div>
+                    <h4 className="text-sm font-bold uppercase tracking-wider text-purple-300 mb-3">
+                      Level 1 — Individual Selected Answers (Q1–Q20)
+                    </h4>
+
+                    {isLoadingAnswers ? (
+                      <div className="py-10 flex items-center justify-center gap-3 text-slate-400 text-sm">
+                        <div className="w-5 h-5 border-2 border-purple-500/30 border-t-purple-400 rounded-full animate-spin" />
+                        <span>Loading participant&apos;s selected answers...</span>
+                      </div>
+                    ) : participantAnswers.length === 0 ? (
+                      <div className="p-6 rounded-2xl bg-slate-900/60 border border-white/5 text-center text-xs text-slate-400">
+                        No individual question answers recorded for this session.
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {participantAnswers.map((ans, index) => {
+                          const unanswered = !ans.selected_answer;
+                          const isCorrect = ans.is_correct;
+
+                          return (
+                            <div
+                              key={ans.question_id || index}
+                              className={`p-4 rounded-2xl border ${
+                                isCorrect
+                                  ? 'bg-emerald-950/20 border-emerald-500/30'
+                                  : unanswered
+                                  ? 'bg-amber-950/20 border-amber-500/25'
+                                  : 'bg-rose-950/20 border-rose-500/30'
+                              }`}
+                            >
+                              <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                                <span className="text-xs font-bold text-slate-300">
+                                  Q{ans.order_num || index + 1} • <span className="text-slate-400 font-normal">{ans.category}</span>
+                                </span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[11px] font-mono text-slate-400">
+                                    ⏱ {ans.time_taken}s
+                                  </span>
+                                  {isCorrect ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300">
+                                      <CheckCircle className="w-3 h-3" /> Correct
+                                    </span>
+                                  ) : unanswered ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300">
+                                      <HelpCircle className="w-3 h-3" /> Not Answered
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/20 text-rose-300">
+                                      <XCircle className="w-3 h-3" /> Incorrect
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <p className="text-sm font-medium text-white mb-3">
+                                {ans.question_text}
+                              </p>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                                <div className="p-2.5 rounded-xl bg-slate-950/60 border border-white/10">
+                                  <div className="text-[10px] uppercase tracking-wider text-slate-400 mb-0.5">
+                                    Selected Answer
+                                  </div>
+                                  <div className={`font-semibold ${
+                                    isCorrect ? 'text-emerald-300' : unanswered ? 'text-amber-300 italic' : 'text-rose-300'
+                                  }`}>
+                                    {getOptionLabel(ans, ans.selected_answer)}
+                                  </div>
+                                </div>
+
+                                <div className="p-2.5 rounded-xl bg-slate-950/60 border border-emerald-500/20">
+                                  <div className="text-[10px] uppercase tracking-wider text-slate-400 mb-0.5">
+                                    Correct Answer
+                                  </div>
+                                  <div className="font-semibold text-emerald-300">
+                                    {getOptionLabel(ans, ans.correct_answer)}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -565,16 +725,16 @@ export default function AdminPage({ navigateTo }) {
       {activeTab === 'questions' && (
         <div className="space-y-4">
           <div className="p-4 rounded-2xl bg-purple-950/20 border border-purple-500/20 text-xs text-purple-200">
-            <strong>Security Notice:</strong> Correct answers are stored securely and never transmitted to participants during active quizzes. Organisers can activate or deactivate questions below.
+            <strong>Security Notice:</strong> Correct answers and scores are strictly hidden from participants and only visible inside this protected Organiser Dashboard.
           </div>
 
           <div className="grid grid-cols-1 gap-4">
             {questions.map((q) => (
-              <div 
+              <div
                 key={q.id}
                 className={`glass-panel p-5 rounded-2xl border transition-all ${
-                  q.is_active !== false 
-                    ? 'border-white/10' 
+                  q.is_active !== false
+                    ? 'border-white/10'
                     : 'border-slate-800 opacity-60 bg-slate-950/40'
                 }`}
               >
@@ -587,7 +747,7 @@ export default function AdminPage({ navigateTo }) {
                       {q.category}
                     </span>
                     <span className="text-[11px] text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded">
-                      {q.points || 10} pts • {q.time_limit || 20}s
+                      {q.points || 5} pts • {q.time_limit || 20}s
                     </span>
                   </div>
 
@@ -617,7 +777,6 @@ export default function AdminPage({ navigateTo }) {
                   {q.question_text}
                 </h3>
 
-                {/* Options List with Correct Answer Highlight */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs mb-3">
                   {['A', 'B', 'C', 'D']
                     .filter((key) => {

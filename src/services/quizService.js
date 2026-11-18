@@ -2,10 +2,11 @@ import { supabase, isSupabaseConfigured } from './supabase';
 import { SAMPLE_QUESTIONS, getSanitizedQuestions } from '../data/sampleQuestions';
 
 // Local storage keys for offline/simulation mode
-const STORAGE_SESSIONS = 'philoday_sessions';
-const STORAGE_RESULTS = 'philoday_results';
-const STORAGE_PARTICIPANTS = 'philoday_participants';
+const STORAGE_SESSIONS = 'philoday_sessions_v3';
+const STORAGE_RESULTS = 'philoday_results_v3';
+const STORAGE_ANSWERS = 'philoday_answers_v3';
 const STORAGE_QUESTIONS = 'philoday_questions_v2';
+const ADMIN_SESSION_KEY = 'philoday_admin_session_v2';
 
 // Initialize simulation data if needed
 function initSimulationStorage() {
@@ -13,71 +14,26 @@ function initSimulationStorage() {
     localStorage.setItem(STORAGE_QUESTIONS, JSON.stringify(SAMPLE_QUESTIONS));
   }
   if (!localStorage.getItem(STORAGE_RESULTS)) {
-    // Seed sample leaderboard results for an engaging first view
-    const initialSeed = [
-      {
-        id: 'seed-1',
-        rank: 1,
-        participant_name: 'Hypatia of Alexandria',
-        total_score: 100,
-        correct_answers: 10,
-        incorrect_answers: 0,
-        unanswered_questions: 0,
-        completion_time: 48.2,
-        completed_at: new Date(Date.now() - 3600000 * 2).toISOString()
-      },
-      {
-        id: 'seed-2',
-        rank: 2,
-        participant_name: 'Hannah Arendt',
-        total_score: 90,
-        correct_answers: 9,
-        incorrect_answers: 1,
-        unanswered_questions: 0,
-        completion_time: 54.1,
-        completed_at: new Date(Date.now() - 3600000 * 4).toISOString()
-      },
-      {
-        id: 'seed-3',
-        rank: 3,
-        participant_name: 'Bertrand Russell',
-        total_score: 90,
-        correct_answers: 9,
-        incorrect_answers: 1,
-        unanswered_questions: 0,
-        completion_time: 61.8,
-        completed_at: new Date(Date.now() - 3600000 * 5).toISOString()
-      },
-      {
-        id: 'seed-4',
-        rank: 4,
-        participant_name: 'Simone de Beauvoir',
-        total_score: 80,
-        correct_answers: 8,
-        incorrect_answers: 2,
-        unanswered_questions: 0,
-        completion_time: 68.0,
-        completed_at: new Date(Date.now() - 3600000 * 6).toISOString()
-      },
-      {
-        id: 'seed-5',
-        rank: 5,
-        participant_name: 'Ludwig Wittgenstein',
-        total_score: 80,
-        correct_answers: 8,
-        incorrect_answers: 2,
-        unanswered_questions: 0,
-        completion_time: 75.4,
-        completed_at: new Date(Date.now() - 3600000 * 8).toISOString()
-      }
-    ];
-    localStorage.setItem(STORAGE_RESULTS, JSON.stringify(initialSeed));
+    localStorage.setItem(STORAGE_RESULTS, JSON.stringify([]));
+  }
+  if (!localStorage.getItem(STORAGE_ANSWERS)) {
+    localStorage.setItem(STORAGE_ANSWERS, JSON.stringify({}));
   }
 }
 
-// Ensure simulation data is initialized in browser
 if (typeof window !== 'undefined') {
   initSimulationStorage();
+}
+
+function getStoredAdminToken() {
+  try {
+    const raw = sessionStorage.getItem(ADMIN_SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed?.token || null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -98,7 +54,6 @@ export async function startQuizSession(firstName, lastName) {
         throw new Error(error.message);
       }
 
-      // Fetch the sanitized questions (without correct_answer)
       const { data: questionsData, error: qError } = await supabase.rpc('get_active_quiz_questions');
       if (qError) {
         throw new Error(qError.message);
@@ -111,11 +66,10 @@ export async function startQuizSession(firstName, lastName) {
         questions: questionsData
       };
     } catch (err) {
-      console.warn('Supabase start session failed, falling back to simulated session:', err.message);
-      // If error is duplicate attempt, pass it on
-      if (err.message.includes('already completed')) {
+      if (err.message.includes('already completed') || err.message.includes('paused')) {
         throw err;
       }
+      console.warn('Supabase start session failed, falling back to simulated session:', err.message);
     }
   }
 
@@ -123,8 +77,7 @@ export async function startQuizSession(firstName, lastName) {
   const cleanFirst = firstName.trim();
   const cleanLast = lastName.trim();
   const results = JSON.parse(localStorage.getItem(STORAGE_RESULTS) || '[]');
-  
-  // Check attempt policy
+
   const existing = results.find(
     r => r.participant_name.toLowerCase() === `${cleanFirst} ${cleanLast}`.toLowerCase()
   );
@@ -138,7 +91,7 @@ export async function startQuizSession(firstName, lastName) {
   const activeQuestions = storedQuestions.filter(q => q.is_active !== false);
   const sanitized = getSanitizedQuestions(activeQuestions);
 
-  const totalAllowedMs = activeQuestions.reduce((acc, q) => acc + ((q.time_limit || 20) * 1000), 0) + 60000;
+  const totalAllowedMs = activeQuestions.reduce((acc, q) => acc + ((q.time_limit || 20) * 1000), 0) + 3600000;
 
   const sessionObj = {
     sessionToken,
@@ -163,73 +116,88 @@ export async function startQuizSession(firstName, lastName) {
 }
 
 /**
- * Submit Level 1 answers & Level 2 open reflection and calculate score server-side
- * @param {string} sessionToken
- * @param {Array<{question_id: string, selected_answer: string, time_taken: number}>} answers
- * @param {string} level2Answer
+ * Submit Level 1 answers & Level 2 open reflection.
+ * Returns ONLY participant's own non-score details (answered / unanswered / level2_answer).
+ * Score is calculated & stored strictly on the backend for the Admin Dashboard ONLY.
  */
 export async function submitQuizAnswers(sessionToken, answers, level2Answer = '') {
   const cleanLevel2 = (level2Answer || '').trim();
+  const totalCount = answers.length;
+  const answeredCount = answers.filter(a => a.selected_answer && a.selected_answer.trim() !== '').length;
+  const unansweredCount = totalCount - answeredCount;
 
   if (isSupabaseConfigured) {
     try {
-      let { data, error } = await supabase.rpc('submit_quiz_answers', {
+      const { data, error } = await supabase.rpc('submit_quiz_answers', {
         p_session_token: sessionToken,
         p_answers: answers,
         p_level2_answer: cleanLevel2 || null
       });
 
-      // Graceful fallback if DB hasn't applied the Level 2 migration yet
-      if (error && error.message && error.message.includes('p_level2_answer')) {
-        const retry = await supabase.rpc('submit_quiz_answers', {
-          p_session_token: sessionToken,
-          p_answers: answers
-        });
-        data = retry.data;
-        error = retry.error;
-      }
-
       if (error) {
         throw new Error(error.message);
       }
 
+      // Return ONLY non-score details to the participant UI
       return {
-        ...data,
-        level2_answer: data.level2_answer ?? cleanLevel2
+        result_id: data.result_id,
+        participant_name: data.participant_name,
+        total_questions: data.total_questions ?? totalCount,
+        answered_questions: data.answered_questions ?? answeredCount,
+        unanswered_questions: data.unanswered_questions ?? unansweredCount,
+        level2_answer: data.level2_answer ?? cleanLevel2,
+        completed_at: data.completed_at
       };
     } catch (err) {
-      console.warn('Supabase submit failed, falling back to simulated submission:', err.message);
       if (err.message.includes('already been submitted') || err.message.includes('expired')) {
         throw err;
       }
+      console.warn('Supabase submit failed, falling back to simulated submission:', err.message);
     }
   }
 
-  // Simulated backend evaluation (mimics PostgreSQL stored procedure)
+  // Simulated backend evaluation (stored privately for Admin only)
   const storedQuestions = JSON.parse(localStorage.getItem(STORAGE_QUESTIONS) || '[]');
   const qMap = new Map(storedQuestions.map(q => [q.id, q]));
 
   let totalScore = 0;
   let correctCount = 0;
   let incorrectCount = 0;
-  let unansweredCount = 0;
+  let simUnanswered = 0;
   let totalTime = 0;
-
-  const activeQuestions = storedQuestions.filter(q => q.is_active !== false);
-  const maxPossibleScore = activeQuestions.reduce((acc, q) => acc + (q.points || 5), 0) || 100;
+  const detailedAnswerRows = [];
 
   answers.forEach(ans => {
     const q = qMap.get(ans.question_id);
     const timeSpent = Number(ans.time_taken) || 0;
     totalTime += timeSpent;
 
+    let isCorrect = false;
     if (!ans.selected_answer) {
-      unansweredCount++;
+      simUnanswered++;
     } else if (q && ans.selected_answer.toUpperCase() === q.correct_answer.toUpperCase()) {
+      isCorrect = true;
       correctCount++;
       totalScore += (q.points || 5);
     } else {
       incorrectCount++;
+    }
+
+    if (q) {
+      detailedAnswerRows.push({
+        order_num: q.order_num,
+        question_id: q.id,
+        category: q.category,
+        question_text: q.question_text,
+        option_a: q.option_a,
+        option_b: q.option_b,
+        option_c: q.option_c,
+        option_d: q.option_d || null,
+        selected_answer: ans.selected_answer || null,
+        correct_answer: q.correct_answer,
+        is_correct: isCorrect,
+        time_taken: timeSpent
+      });
     }
   });
 
@@ -239,122 +207,127 @@ export async function submitQuizAnswers(sessionToken, answers, level2Answer = ''
   };
 
   const results = JSON.parse(localStorage.getItem(STORAGE_RESULTS) || '[]');
-  
+  const simAnswered = correctCount + incorrectCount;
+
   const resultRecord = {
     id: `res_${Date.now()}`,
     session_id: sessionToken,
     participant_name: session.participantName,
     total_score: totalScore,
-    max_possible_score: maxPossibleScore,
     correct_answers: correctCount,
     incorrect_answers: incorrectCount,
-    unanswered_questions: unansweredCount,
+    answered_questions: simAnswered,
+    unanswered_questions: simUnanswered,
+    total_questions: answers.length,
     completion_time: parseFloat(totalTime.toFixed(1)),
     level2_answer: cleanLevel2,
     completed_at: new Date().toISOString()
   };
 
-  // Add and calculate rank
   results.push(resultRecord);
   results.sort((a, b) => b.total_score - a.total_score || a.completion_time - b.completion_time);
-  
-  // Re-rank
-  results.forEach((r, idx) => {
-    r.rank = idx + 1;
-  });
-
+  results.forEach((r, idx) => { r.rank = idx + 1; });
   localStorage.setItem(STORAGE_RESULTS, JSON.stringify(results));
 
-  const myRank = results.find(r => r.session_id === sessionToken)?.rank || 1;
+  const allAnswersMap = JSON.parse(localStorage.getItem(STORAGE_ANSWERS) || '{}');
+  allAnswersMap[sessionToken] = detailedAnswerRows;
+  localStorage.setItem(STORAGE_ANSWERS, JSON.stringify(allAnswersMap));
 
+  // Return ONLY participant's own non-score details
   return {
-    ...resultRecord,
-    rank: myRank
+    result_id: resultRecord.id,
+    participant_name: resultRecord.participant_name,
+    total_questions: resultRecord.total_questions,
+    answered_questions: resultRecord.answered_questions,
+    unanswered_questions: resultRecord.unanswered_questions,
+    level2_answer: resultRecord.level2_answer,
+    completed_at: resultRecord.completed_at
   };
 }
 
 /**
- * Fetch leaderboard records
- */
-export async function fetchLeaderboard(limit = 10) {
-  if (isSupabaseConfigured) {
-    try {
-      const { data, error } = await supabase.rpc('get_leaderboard', { p_limit: limit });
-      if (!error && data) {
-        return data;
-      }
-    } catch (err) {
-      console.warn('Supabase get_leaderboard error:', err);
-    }
-  }
-
-  // Simulation mode
-  const results = JSON.parse(localStorage.getItem(STORAGE_RESULTS) || '[]');
-  return results.slice(0, limit);
-}
-
-/**
- * Admin Authentication
+ * Admin Authentication (ONLY authorised organiser email & password validated on server)
  */
 export async function adminLogin(email, password) {
+  const cleanEmail = (email || '').trim().toLowerCase();
+
   if (isSupabaseConfigured) {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password
+    const { data, error } = await supabase.rpc('admin_authenticate', {
+      p_email: cleanEmail,
+      p_password: password
     });
-    if (error) throw error;
-    return data;
+
+    if (error) {
+      throw new Error(error.message || 'Invalid organiser email or password.');
+    }
+
+    const adminSession = {
+      token: data.token,
+      email: data.email,
+      expiresAt: data.expires_at
+    };
+    sessionStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(adminSession));
+    return adminSession;
   }
 
-  // Simulation Mode login for testing
-  // Default organiser credentials for local testing
-  if (email === 'admin@philosophyday.edu' && password === 'Philosophy2026!') {
-    const mockUser = {
-      id: 'mock-admin-id',
-      email: 'admin@philosophyday.edu',
-      role: 'organiser',
-      name: 'Event Coordinator'
+  // Local simulation mode fallback
+  if (cleanEmail === 'kaveeshajagoda2023@gmail.com' && password === '1234') {
+    const mockSession = {
+      token: `local_admin_${Date.now()}`,
+      email: cleanEmail,
+      role: 'organiser'
     };
-    sessionStorage.setItem('philoday_admin_session', JSON.stringify(mockUser));
-    return { user: mockUser };
-  } else {
-    throw new Error('Invalid credentials. (For testing, use admin@philosophyday.edu / Philosophy2026!)');
+    sessionStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(mockSession));
+    return mockSession;
   }
+
+  throw new Error('Access denied. Invalid organiser email or password.');
 }
 
 export async function adminLogout() {
-  if (isSupabaseConfigured) {
-    await supabase.auth.signOut();
+  const token = getStoredAdminToken();
+  if (isSupabaseConfigured && token) {
+    try {
+      await supabase.rpc('admin_logout', { p_admin_token: token });
+    } catch {
+      // Ignore network errors on sign out
+    }
   }
-  sessionStorage.removeItem('philoday_admin_session');
+  sessionStorage.removeItem(ADMIN_SESSION_KEY);
 }
 
 export async function getAdminSession() {
-  if (isSupabaseConfigured) {
-    const { data, error } = await supabase.auth.getSession();
-    if (error || !data?.session) return null;
-    return data.session;
+  try {
+    const raw = sessionStorage.getItem(ADMIN_SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.token) return null;
+
+    if (parsed.expiresAt && new Date(parsed.expiresAt) < new Date()) {
+      sessionStorage.removeItem(ADMIN_SESSION_KEY);
+      return null;
+    }
+
+    return parsed;
+  } catch {
+    return null;
   }
-  const raw = sessionStorage.getItem('philoday_admin_session');
-  return raw ? JSON.parse(raw) : null;
 }
 
 /**
- * Fetch Admin Metrics
+ * Fetch Admin Metrics (Admin Only)
  */
 export async function fetchAdminMetrics() {
-  if (isSupabaseConfigured) {
-    try {
-      const { data, error } = await supabase.rpc('admin_get_quiz_metrics');
-      if (!error && data) {
-        return data;
-      }
-    } catch (err) {
-      console.warn('Supabase admin metrics error:', err);
-    }
+  const token = getStoredAdminToken();
+
+  if (isSupabaseConfigured && token) {
+    const { data, error } = await supabase.rpc('admin_get_quiz_metrics', {
+      p_admin_token: token
+    });
+    if (error) throw new Error(error.message);
+    return data;
   }
 
-  // Simulation metrics
   const results = JSON.parse(localStorage.getItem(STORAGE_RESULTS) || '[]');
   const totalCompleted = results.length;
   const highestScore = results.length ? Math.max(...results.map(r => r.total_score)) : 0;
@@ -366,7 +339,7 @@ export async function fetchAdminMetrics() {
     : 0;
 
   return {
-    total_participants: totalCompleted + 4, // Including in-progress
+    total_participants: totalCompleted,
     total_completed: totalCompleted,
     highest_score: highestScore,
     average_score: avgScore,
@@ -375,105 +348,85 @@ export async function fetchAdminMetrics() {
 }
 
 /**
- * Fetch All Participant Results for Admin Table
+ * Fetch All Participant Results for Admin Table (Admin Only)
  */
 export async function fetchAdminResults() {
-  if (isSupabaseConfigured) {
-    try {
-      let { data, error } = await supabase
-        .from('quiz_results')
-        .select(`
-          id,
-          total_score,
-          correct_answers,
-          incorrect_answers,
-          unanswered_questions,
-          completion_time,
-          level2_answer,
-          created_at,
-          participants (
-            first_name,
-            last_name
-          )
-        `)
-        .order('total_score', { ascending: false });
+  const token = getStoredAdminToken();
 
-      if (error && error.message && error.message.includes('level2_answer')) {
-        const fallback = await supabase
-          .from('quiz_results')
-          .select(`
-            id,
-            total_score,
-            correct_answers,
-            incorrect_answers,
-            unanswered_questions,
-            completion_time,
-            created_at,
-            participants (
-              first_name,
-              last_name
-            )
-          `)
-          .order('total_score', { ascending: false });
-        data = fallback.data;
-        error = fallback.error;
-      }
-
-      if (!error && data) {
-        return data.map((item, index) => ({
-          id: item.id,
-          rank: index + 1,
-          participant_name: `${item.participants?.first_name || ''} ${item.participants?.last_name || ''}`.trim(),
-          total_score: item.total_score,
-          correct_answers: item.correct_answers,
-          incorrect_answers: item.incorrect_answers,
-          unanswered_questions: item.unanswered_questions,
-          completion_time: item.completion_time,
-          level2_answer: item.level2_answer || '',
-          completed_at: item.created_at
-        }));
-      }
-    } catch (err) {
-      console.warn('Supabase admin results error:', err);
-    }
+  if (isSupabaseConfigured && token) {
+    const { data, error } = await supabase.rpc('admin_get_all_results', {
+      p_admin_token: token
+    });
+    if (error) throw new Error(error.message);
+    return (data || []).map(item => ({
+      id: item.result_id,
+      session_id: item.session_id,
+      rank: Number(item.rank),
+      participant_name: item.participant_name,
+      total_score: item.total_score,
+      correct_answers: item.correct_answers,
+      incorrect_answers: item.incorrect_answers,
+      answered_questions: (item.correct_answers || 0) + (item.incorrect_answers || 0),
+      unanswered_questions: item.unanswered_questions,
+      completion_time: item.completion_time,
+      level2_answer: item.level2_answer || '',
+      completed_at: item.completed_at
+    }));
   }
 
-  const results = JSON.parse(localStorage.getItem(STORAGE_RESULTS) || '[]');
-  return results;
+  return JSON.parse(localStorage.getItem(STORAGE_RESULTS) || '[]');
 }
 
 /**
- * Fetch Questions for Admin Management (Includes correct_answer)
+ * Fetch Individual Participant's Detailed Answers (Q1-Q20) (Admin Only)
+ */
+export async function fetchParticipantAnswers(sessionId) {
+  const token = getStoredAdminToken();
+
+  if (isSupabaseConfigured && token) {
+    const { data, error } = await supabase.rpc('admin_get_participant_answers', {
+      p_admin_token: token,
+      p_session_id: sessionId
+    });
+    if (error) throw new Error(error.message);
+    return data || [];
+  }
+
+  const allAnswersMap = JSON.parse(localStorage.getItem(STORAGE_ANSWERS) || '{}');
+  return allAnswersMap[sessionId] || [];
+}
+
+/**
+ * Fetch Questions for Admin Management (Includes correct_answer) (Admin Only)
  */
 export async function fetchAdminQuestions() {
-  if (isSupabaseConfigured) {
-    try {
-      const { data, error } = await supabase
-        .from('questions')
-        .select('*')
-        .order('order_num', { ascending: true });
+  const token = getStoredAdminToken();
 
-      if (!error && data) {
-        return data;
-      }
-    } catch (err) {
-      console.warn('Supabase fetch questions error:', err);
-    }
+  if (isSupabaseConfigured && token) {
+    const { data, error } = await supabase.rpc('admin_get_questions', {
+      p_admin_token: token
+    });
+    if (error) throw new Error(error.message);
+    return data || [];
   }
 
   return JSON.parse(localStorage.getItem(STORAGE_QUESTIONS) || '[]');
 }
 
 /**
- * Toggle Question Active Status
+ * Toggle Question Active Status (Admin Only)
  */
 export async function toggleQuestionActive(questionId, isActive) {
-  if (isSupabaseConfigured) {
-    const { error } = await supabase
-      .from('questions')
-      .update({ is_active: isActive })
-      .eq('id', questionId);
-    if (error) throw error;
+  const token = getStoredAdminToken();
+
+  if (isSupabaseConfigured && token) {
+    const { error } = await supabase.rpc('admin_toggle_question', {
+      p_admin_token: token,
+      p_question_id: questionId,
+      p_is_active: isActive
+    });
+    if (error) throw new Error(error.message);
+    return;
   }
 
   const stored = JSON.parse(localStorage.getItem(STORAGE_QUESTIONS) || '[]');
@@ -482,15 +435,17 @@ export async function toggleQuestionActive(questionId, isActive) {
 }
 
 /**
- * Reset participant's attempt (Organiser feature for edge cases)
+ * Reset participant's attempt (Admin Only)
  */
 export async function resetParticipantAttempt(participantName, resultId = null) {
-  if (isSupabaseConfigured && resultId) {
-    const { error } = await supabase
-      .from('quiz_results')
-      .delete()
-      .eq('id', resultId);
-    if (error) throw error;
+  const token = getStoredAdminToken();
+
+  if (isSupabaseConfigured && token && resultId) {
+    const { error } = await supabase.rpc('admin_reset_result', {
+      p_admin_token: token,
+      p_result_id: resultId
+    });
+    if (error) throw new Error(error.message);
     return;
   }
 

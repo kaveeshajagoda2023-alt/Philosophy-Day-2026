@@ -5,7 +5,6 @@ import WelcomePage from './pages/WelcomePage';
 import ParticipantEntryPage from './pages/ParticipantEntryPage';
 import QuizPage from './pages/QuizPage';
 import ResultsPage from './pages/ResultsPage';
-import LeaderboardPage from './pages/LeaderboardPage';
 import AdminPage from './pages/AdminPage';
 import { isSupabaseConfigured } from './services/supabase';
 import { Info, Sparkles } from 'lucide-react';
@@ -87,13 +86,8 @@ export default function App() {
         {currentPage === 'results' && (
           <ResultsPage
             resultData={resultData}
-            onPlayAgain={handlePlayAgain}
             navigateTo={setCurrentPage}
           />
-        )}
-
-        {currentPage === 'leaderboard' && (
-          <LeaderboardPage navigateTo={setCurrentPage} />
         )}
 
         {currentPage === 'admin' && (
