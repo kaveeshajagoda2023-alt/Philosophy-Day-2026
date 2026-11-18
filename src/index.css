@@ -1,0 +1,190 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    background-color: #0b0f19;
+    color: #f1f5f9;
+    font-family: 'Inter', 'Noto Sans Sinhala', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  }
+
+  h1, h2, h3, .font-display {
+    font-family: 'Playfair Display', 'Noto Sans Sinhala', Georgia, serif;
+  }
+}
+
+/* Glassmorphism */
+.glass-panel {
+  background: rgba(22, 31, 48, 0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+}
+
+.glass-card {
+  background: rgba(30, 41, 59, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-card:hover {
+  border-color: rgba(168, 85, 247, 0.3);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 30px -10px rgba(121, 40, 202, 0.25);
+}
+
+/* Gradient Texts */
+.gradient-text {
+  background: linear-gradient(135deg, #a855f7 0%, #ec4899 50%, #f97316 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gradient-text-cyan {
+  background: linear-gradient(135deg, #38bdf8 0%, #818cf8 50%, #c084fc 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gradient-text-gold {
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Glowing buttons */
+.btn-primary {
+  background: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%);
+  color: white;
+  font-weight: 600;
+  border-radius: 0.75rem;
+  padding: 0.85rem 1.75rem;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 20px rgba(139, 92, 246, 0.4);
+}
+
+.btn-primary:hover {
+  background: linear-gradient(135deg, #7c3aed 0%, #db2777 100%);
+  box-shadow: 0 6px 25px rgba(236, 72, 153, 0.5);
+  transform: translateY(-2px);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+}
+
+/* Option Cards for Quiz */
+.quiz-option-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 1.1rem 1.25rem;
+  border-radius: 1rem;
+  background: rgba(30, 41, 59, 0.5);
+  border: 2px solid rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
+}
+
+.quiz-option-card:hover {
+  background: rgba(45, 60, 85, 0.7);
+  border-color: rgba(168, 85, 247, 0.5);
+  transform: translateX(4px);
+}
+
+.quiz-option-card.selected {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.25) 0%, rgba(236, 72, 153, 0.2) 100%);
+  border-color: #a855f7;
+  box-shadow: 0 0 20px rgba(168, 85, 247, 0.35);
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #0b0f19;
+}
+::-webkit-scrollbar-thumb {
+  background: #2d3748;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #4a5568;
+}
+
+/* ========================================================= */
+/* ARISTOTLE DOWN-TO-UP ANIMATIONS                           */
+/* ========================================================= */
+
+/* Continuous majestic hovering from down to up and back */
+@keyframes aristotleDownToUp {
+  0% {
+    transform: translateY(24px) scale(0.98);
+  }
+  50% {
+    transform: translateY(-24px) scale(1.02);
+  }
+  100% {
+    transform: translateY(24px) scale(0.98);
+  }
+}
+
+.animate-aristotle-down-to-up {
+  animation: aristotleDownToUp 4.5s ease-in-out infinite;
+}
+
+/* Ethereal background stream: Aristotle moving continuously from below screen to top */
+@keyframes aristotleStream {
+  0% {
+    transform: translateY(110vh) rotate(0deg) scale(0.7);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.18;
+  }
+  85% {
+    opacity: 0.18;
+  }
+  100% {
+    transform: translateY(-25vh) rotate(6deg) scale(0.95);
+    opacity: 0;
+  }
+}
+
+.animate-aristotle-stream {
+  animation: aristotleStream linear infinite;
+}
+
+/* Triggered full-screen ascent from bottom to above the top */
+@keyframes aristotleFullAscent {
+  0% {
+    bottom: -180px;
+    opacity: 0;
+    transform: scale(0.8) rotate(-2deg);
+  }
+  10% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+  85% {
+    opacity: 1;
+    transform: scale(1.1) rotate(2deg);
+  }
+  100% {
+    bottom: 110vh;
+    opacity: 0;
+    transform: scale(1.18) rotate(4deg);
+  }
+}
+
+.animate-aristotle-full-ascent {
+  animation: aristotleFullAscent 3.6s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
