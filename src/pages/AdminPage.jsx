@@ -179,6 +179,7 @@ export default function AdminPage({ navigateTo }) {
     const headers = [
       'Rank',
       'Participant Name',
+      'Phone Number',
       'Level 1 Score (/100)',
       'Questions Answered',
       'Correct Answers',
@@ -203,6 +204,7 @@ export default function AdminPage({ navigateTo }) {
       return [
         r.rank || idx + 1,
         `"${(r.participant_name || '').replace(/"/g, '""')}"`,
+        `"${(r.phone_number || '').replace(/"/g, '""')}"`,
         r.total_score,
         r.answered_questions ?? ((r.correct_answers || 0) + (r.incorrect_answers || 0)),
         r.correct_answers,
@@ -234,9 +236,15 @@ export default function AdminPage({ navigateTo }) {
     return text ? `${letter}) ${text}` : letter;
   };
 
-  // Filter and sort results
+  // Filter and sort results (by name or phone number)
   const filteredResults = results
-    .filter(r => r.participant_name.toLowerCase().includes(searchTerm.toLowerCase().trim()))
+    .filter(r => {
+      const q = searchTerm.toLowerCase().trim();
+      return (
+        (r.participant_name || '').toLowerCase().includes(q) ||
+        (r.phone_number || '').toLowerCase().includes(q)
+      );
+    })
     .sort((a, b) => {
       if (sortBy === 'score_desc') return b.total_score - a.total_score || a.completion_time - b.completion_time;
       if (sortBy === 'score_asc') return a.total_score - b.total_score;
@@ -547,8 +555,13 @@ export default function AdminPage({ navigateTo }) {
                         <td className="py-3.5 px-3 text-center font-bold text-slate-400">
                           #{r.rank || idx + 1}
                         </td>
-                        <td className="py-3.5 px-4 font-semibold text-white">
-                          {r.participant_name}
+                        <td className="py-3.5 px-4">
+                          <div className="font-semibold text-white">{r.participant_name}</div>
+                          {r.phone_number && (
+                            <div className="text-xs text-slate-400 font-mono mt-0.5">
+                              📞 {r.phone_number}
+                            </div>
+                          )}
                         </td>
                         <td className="py-3.5 px-3 text-center font-bold text-purple-300 text-base">
                           {r.total_score}
@@ -729,6 +742,11 @@ export default function AdminPage({ navigateTo }) {
                     <h3 className="text-xl sm:text-2xl font-display font-bold text-white mt-0.5">
                       {selectedParticipant.participant_name}
                     </h3>
+                    {selectedParticipant.phone_number && (
+                      <div className="text-xs text-cyan-300 font-mono mt-1">
+                        📞 Phone: {selectedParticipant.phone_number}
+                      </div>
+                    )}
                     <div className="flex flex-wrap items-center gap-3 mt-2 text-xs">
                       <span className="px-2.5 py-1 rounded-md bg-purple-500/20 text-purple-200 font-bold">
                         Score: {selectedParticipant.total_score} / 100

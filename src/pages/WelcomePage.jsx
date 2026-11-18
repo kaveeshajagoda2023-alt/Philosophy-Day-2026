@@ -22,7 +22,7 @@ export default function WelcomePage({ navigateTo }) {
     {
       icon: <Shield className="w-5 h-5 text-pink-400" />,
       title: "Zero Registration Required",
-      desc: "No password, no email, no signup! Just enter your first name and surname to begin your official quiz attempt."
+      desc: "No password, no email, no signup! Just enter your first name, surname, and phone number to begin."
     }
   ];
 

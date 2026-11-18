@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { CheckCircle2, HelpCircle, Share2, Home, Sparkles, ShieldCheck, BookOpen } from 'lucide-react';
+import { CheckCircle2, HelpCircle, Share2, Home, ShieldCheck, BookOpen, Gift } from 'lucide-react';
 import ConfettiLauncher from '../components/Confetti';
+import GiftBoxPopup from '../components/GiftBoxPopup';
 
 export default function ResultsPage({ resultData, navigateTo }) {
   const [copied, setCopied] = useState(false);
+  const [showGiftPopup, setShowGiftPopup] = useState(true);
 
   const {
     participant_name = 'Philosophy Participant',
@@ -30,6 +32,13 @@ export default function ResultsPage({ resultData, navigateTo }) {
   return (
     <div className="min-h-[calc(100vh-140px)] flex flex-col items-center justify-center py-10 px-4 sm:px-6">
       <ConfettiLauncher trigger={true} />
+
+      {/* Automatic Pop-Up Gift Box on Quiz Completion */}
+      <GiftBoxPopup
+        isOpen={showGiftPopup}
+        onClose={() => setShowGiftPopup(false)}
+        participantName={participant_name}
+      />
 
       <div className="w-full max-w-2xl">
         <div className="glass-panel p-6 sm:p-10 rounded-3xl border border-white/10 shadow-2xl relative overflow-hidden text-center">
@@ -121,7 +130,15 @@ export default function ResultsPage({ resultData, navigateTo }) {
           </div>
 
           {/* Action Buttons */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+          <div className="flex flex-col sm:flex-row flex-wrap items-center justify-center gap-3">
+            <button
+              onClick={() => setShowGiftPopup(true)}
+              className="w-full sm:w-auto px-5 py-3 rounded-xl font-semibold text-amber-200 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-400/40 transition-all flex items-center justify-center gap-2 text-sm"
+            >
+              <Gift className="w-4 h-4 text-amber-300" />
+              <span>View My Gift</span>
+            </button>
+
             <button
               onClick={() => navigateTo('welcome')}
               className="w-full sm:w-auto btn-primary flex items-center justify-center gap-2 py-3 px-6 text-sm sm:text-base font-semibold"

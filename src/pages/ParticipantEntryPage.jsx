@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { ArrowRight, UserCheck, Shield, AlertCircle, ArrowLeft, Sparkles, BookOpen } from 'lucide-react';
+import { ArrowRight, UserCheck, Shield, AlertCircle, ArrowLeft, Phone } from 'lucide-react';
 import { startQuizSession } from '../services/quizService';
 
 export default function ParticipantEntryPage({ onSessionStarted, navigateTo }) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -14,6 +15,8 @@ export default function ParticipantEntryPage({ onSessionStarted, navigateTo }) {
 
     const cleanFirst = firstName.trim();
     const cleanLast = lastName.trim();
+    const cleanPhone = phoneNumber.trim();
+    const digitsOnly = cleanPhone.replace(/\D/g, '');
 
     if (!cleanFirst) {
       setError('Please enter your First Name.');
@@ -23,11 +26,15 @@ export default function ParticipantEntryPage({ onSessionStarted, navigateTo }) {
       setError('Please enter your Surname.');
       return;
     }
+    if (!cleanPhone || digitsOnly.length < 9 || digitsOnly.length > 15) {
+      setError('Please enter a valid Phone Number (e.g., 077 123 4567).');
+      return;
+    }
 
     setIsLoading(true);
 
     try {
-      const sessionData = await startQuizSession(cleanFirst, cleanLast);
+      const sessionData = await startQuizSession(cleanFirst, cleanLast, cleanPhone);
       onSessionStarted(sessionData);
     } catch (err) {
       if (err.isAttemptBlocked || err.message.includes('already completed')) {
@@ -65,7 +72,7 @@ export default function ParticipantEntryPage({ onSessionStarted, navigateTo }) {
               Participant Entry
             </h2>
             <p className="text-xs sm:text-sm text-slate-400">
-              Enter your name to initiate your official symposium session
+              Enter your name and phone number to start the symposium quiz
             </p>
           </div>
 
@@ -73,7 +80,7 @@ export default function ParticipantEntryPage({ onSessionStarted, navigateTo }) {
           <div className="mb-6 p-3.5 rounded-xl bg-purple-950/30 border border-purple-500/20 flex items-start gap-3">
             <Shield className="w-4 h-4 text-purple-400 shrink-0 mt-0.5" />
             <p className="text-xs text-purple-200/90 leading-relaxed">
-              <strong>Open Access:</strong> No email, password, or account needed. Your name is only used to record your official submission for the Philosophy Club.
+              <strong>Private &amp; Secure:</strong> No account or password needed. Your name and phone number are strictly private and visible only to the Philosophy Club organisers.
             </p>
           </div>
 
@@ -121,11 +128,33 @@ export default function ParticipantEntryPage({ onSessionStarted, navigateTo }) {
                 type="text"
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
-                placeholder="e.g. Chen, Taylor, Okafor"
+                placeholder="e.g. Perera, Silva, Fernando"
                 disabled={isLoading}
                 maxLength={40}
                 className="w-full px-4 py-3 rounded-xl bg-slate-900/80 border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all text-sm"
               />
+            </div>
+
+            <div>
+              <label 
+                htmlFor="phoneNumber" 
+                className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5"
+              >
+                Phone Number <span className="text-pink-400">*</span>
+              </label>
+              <div className="relative">
+                <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  id="phoneNumber"
+                  type="tel"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  placeholder="e.g. 077 123 4567"
+                  disabled={isLoading}
+                  maxLength={20}
+                  className="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-900/80 border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all text-sm"
+                />
+              </div>
             </div>
 
             <button

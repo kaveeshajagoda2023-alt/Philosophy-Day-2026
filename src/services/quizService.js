@@ -39,16 +39,29 @@ function getStoredAdminToken() {
 /**
  * Start a new quiz session for a participant
  */
-export async function startQuizSession(firstName, lastName) {
+export async function startQuizSession(firstName, lastName, phoneNumber = '') {
   const sessionToken = `sesh_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  const cleanPhone = (phoneNumber || '').trim();
 
   if (isSupabaseConfigured) {
     try {
-      const { data, error } = await supabase.rpc('start_quiz_session', {
+      let { data, error } = await supabase.rpc('start_quiz_session', {
         p_first_name: firstName,
         p_last_name: lastName,
-        p_session_token: sessionToken
+        p_session_token: sessionToken,
+        p_phone_number: cleanPhone || null
       });
+
+      // Graceful fallback if DB hasn't applied the phone_number SQL yet
+      if (error && error.message && error.message.includes('p_phone_number')) {
+        const retry = await supabase.rpc('start_quiz_session', {
+          p_first_name: firstName,
+          p_last_name: lastName,
+          p_session_token: sessionToken
+        });
+        data = retry.data;
+        error = retry.error;
+      }
 
       if (error) {
         throw new Error(error.message);
@@ -62,6 +75,7 @@ export async function startQuizSession(firstName, lastName) {
       return {
         sessionToken,
         participantName: data.participant_name,
+        phoneNumber: cleanPhone,
         expiresAt: data.expires_at,
         questions: questionsData
       };
@@ -98,6 +112,7 @@ export async function startQuizSession(firstName, lastName) {
     participantName: `${cleanFirst} ${cleanLast}`,
     firstName: cleanFirst,
     lastName: cleanLast,
+    phoneNumber: cleanPhone,
     startedAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + totalAllowedMs).toISOString(),
     active: true
@@ -110,6 +125,7 @@ export async function startQuizSession(firstName, lastName) {
   return {
     sessionToken,
     participantName: sessionObj.participantName,
+    phoneNumber: cleanPhone,
     expiresAt: sessionObj.expiresAt,
     questions: sanitized
   };
@@ -213,6 +229,7 @@ export async function submitQuizAnswers(sessionToken, answers, level2Answer = ''
     id: `res_${Date.now()}`,
     session_id: sessionToken,
     participant_name: session.participantName,
+    phone_number: session.phoneNumber || '',
     total_score: totalScore,
     correct_answers: correctCount,
     incorrect_answers: incorrectCount,
@@ -363,6 +380,7 @@ export async function fetchAdminResults() {
       session_id: item.session_id,
       rank: Number(item.rank),
       participant_name: item.participant_name,
+      phone_number: item.phone_number || '',
       total_score: item.total_score,
       correct_answers: item.correct_answers,
       incorrect_answers: item.incorrect_answers,
